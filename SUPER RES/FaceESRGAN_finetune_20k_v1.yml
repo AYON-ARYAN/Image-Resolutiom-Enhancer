@@ -1,0 +1,114 @@
+# GENERATE TIME: Wed Nov  5 13:18:11 2025
+# CMD:
+# ../basicsr/basicsr/train.py -opt options/finetune/FaceESRGAN_finetune_20k_v1.yml
+
+
+# ===========================================================
+#  Real-ESRGAN 20k-Iteration Run (Seeded by 9k model)
+# ===========================================================
+
+name: FaceESRGAN_finetune_20k_v1 # A new name for this new run
+model_type: SRGANModel
+scale: 4
+num_gpu: 1
+manual_seed: 42
+
+# =====================================
+# Datasets
+# =====================================
+datasets:
+  train:
+    name: FaceTrain
+    type: PairedImageDataset
+    dataroot_gt: /content/dataset_faces/HR
+    dataroot_lq: /content/dataset_faces/LR
+    io_backend: {type: disk}
+    gt_size: 256
+    use_hflip: true
+    use_rot: true
+    num_worker_per_gpu: 2
+    batch_size_per_gpu: 2
+    phase: train
+  val:
+    name: FaceVal
+    type: PairedImageDataset
+    dataroot_gt: /content/dataset_faces/HR_val
+    dataroot_lq: /content/dataset_faces/LR_val
+    io_backend: {type: disk}
+    gt_size: 256
+    phase: val
+
+# =====================================
+# Networks
+# =====================================
+network_g: {type: RRDBNet, num_in_ch: 3, num_out_ch: 3, num_feat: 64, num_block: 23, num_grow_ch: 32, scale: 4}
+network_d: {type: UNetDiscriminatorSN, num_in_ch: 3, num_feat: 48}
+
+# =====================================
+# Paths (The "Seeding" Method)
+# =====================================
+path:
+  # 1.  THIS IS THE KEY: Load your 9k model as the starting point
+  pretrain_network_g: /content/drive/MyDrive/RealESRGAN_Experiments/FaceESRGAN_finetune_10k_v2/models/net_g_9000.pth
+  
+  strict_load_g: false
+  param_key_g: params_ema
+
+  # 2. All new save files will go to your new experiment folder
+  experiments_root: /content/drive/MyDrive/RealESRGAN_Experiments
+  models: models
+  training_states: training_states
+  log: log
+  results_root: results
+
+# =====================================
+# Training Settings (A new 10k run)
+# =====================================
+train:
+  total_iter: 10000 
+  warmup_iter: -1
+  use_amp: true
+  freeze_layers_g: 20
+
+  optim_g: {type: Adam, lr: 0.00005, weight_decay: 0.0, betas: [0.9, 0.99]}
+  optim_d: {type: Adam, lr: 0.00005, weight_decay: 0.0, betas: [0.9, 0.99]}
+
+  scheduler:
+    type: MultiStepLR
+    milestones: [6000, 9000] # 60% and 90% of 10k
+    gamma: 0.5
+
+  pixel_opt: {type: L1Loss, loss_weight: 1.0, reduction: mean}
+  perceptual_opt:
+    type: PerceptualLoss
+    layer_weights: {'conv5_4': 1.0}
+    perceptual_weight: 1.0
+    style_weight: 0
+    use_input_norm: true
+    range_norm: false
+    criterion: l1
+  gan_opt: {type: GANLoss, gan_type: lsgan, loss_weight: 0.05}
+
+# =====================================
+# Validation
+# =====================================
+val:
+  val_freq: 2000
+  save_img: true
+  metrics:
+    psnr: {type: calculate_psnr, crop_border: 4, test_y_channel: true}
+    ssim: {type: calculate_ssim, crop_border: 4, test_y_channel: true}
+
+# =====================================
+# Logger
+# =====================================
+logger:
+  print_freq: 50
+  save_checkpoint_freq: 2000 # Save every 2000 iters
+  use_tb_logger: false
+  wandb: {project: ~, resume_id: ~}
+
+# =====================================
+# Distributed Training
+# =====================================
+dist_params: {backend: gloo, port: 29500}
